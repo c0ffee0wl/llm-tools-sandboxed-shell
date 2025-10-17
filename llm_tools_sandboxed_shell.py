@@ -23,7 +23,8 @@ def sandboxed_shell(command: str) -> str:
     - No network access
     - Isolated PID, IPC, and cgroup namespaces
     - Temporary /tmp, /var and /run directories that don't persist
-    - Cleared environment variables for isolation
+    - Real user HOME, USER, and PWD from host environment
+    - Safe environment variables passed through (TERM, LANG, LC_*, EDITOR, etc.)
 
     Args:
         command: The shell command to execute (e.g., "ls -la", "cat /etc/hostname")
@@ -38,6 +39,7 @@ def sandboxed_shell(command: str) -> str:
     # Build the secure bubblewrap command
     bwrap_args = [
         'bwrap',
+        
         # Die if parent process dies
         '--die-with-parent',
 
@@ -63,13 +65,27 @@ def sandboxed_shell(command: str) -> str:
         # Clear environment for isolation
         '--clearenv',
 
-        # Set minimal safe environment variables
-        '--setenv', 'PATH', '/usr/bin:/bin:/usr/sbin:/sbin',
-        '--setenv', 'HOME', '/tmp',
-        '--setenv', 'USER', 'sandbox',
+        # Set essential environment variables
+        '--setenv', 'PATH', os.environ.get('PATH', '/usr/bin:/bin:/usr/sbin:/sbin'),
+        '--setenv', 'HOME', os.environ.get('HOME', '/tmp'),
+        '--setenv', 'USER', os.environ.get('USER', 'sandbox'),
+    ]
 
-        # Set working directory
-        '--chdir', '/tmp',
+    # Add safe display/locale environment variables
+    safe_env_vars = ['LANG', 'COLORTERM', 'EDITOR', 'VISUAL', 'PAGER']
+    for var in safe_env_vars:
+        if var in os.environ:
+            bwrap_args.extend(['--setenv', var, os.environ[var]])
+
+    # Add all LC_* locale variables
+    for var, value in os.environ.items():
+        if var.startswith('LC_'):
+            bwrap_args.extend(['--setenv', var, value])
+
+    # Add final arguments
+    bwrap_args.extend([
+        # Set working directory to current directory
+        '--chdir', os.environ.get('PWD', '/tmp'),
 
         # Create new session
         '--new-session',
@@ -79,7 +95,7 @@ def sandboxed_shell(command: str) -> str:
         '/bin/sh',
         '-c',
         command
-    ]
+    ])
 
     try:
         # Execute the sandboxed command
@@ -87,7 +103,7 @@ def sandboxed_shell(command: str) -> str:
             bwrap_args,
             capture_output=True,
             text=True,
-            timeout=30,  # 30 second timeout to prevent hanging
+            timeout=60,  # 60 second timeout to prevent hanging
             check=False  # Don't raise exception on non-zero exit
         )
 
@@ -103,7 +119,7 @@ def sandboxed_shell(command: str) -> str:
         return output if output else "[No output]"
 
     except subprocess.TimeoutExpired:
-        return "[Error: Command timed out after 30 seconds]"
+        return "[Error: Command timed out after 60 seconds]"
     except FileNotFoundError:
         return "[Error: bubblewrap (bwrap) not found. Please install bubblewrap: apt-get install bubblewrap]"
     except Exception as e:

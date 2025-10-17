@@ -54,20 +54,24 @@ def test_tmp_directory_writable():
     assert "test content" in result
 
 
-def test_home_directory_writable():
-    """Test that home directory is writable in sandbox."""
-    # HOME is now /tmp which is writable
-    result = sandboxed_shell("echo 'home test' > ~/testfile && cat ~/testfile")
-    assert "home test" in result
+def test_home_directory_readonly():
+    """Test that home directory is read-only in sandbox."""
+    # HOME points to real user home which is read-only
+    result = sandboxed_shell("touch ~/testfile 2>&1")
+    # Should fail because real home is read-only
+    assert "read-only" in result.lower() or "permission denied" in result.lower() or "exit code" in result.lower()
 
 
 def test_environment_isolation():
     """Test that environment is properly isolated."""
     result = sandboxed_shell("env")
-    # Should have minimal environment
+    # Should have essential environment variables
     assert "PATH" in result
-    assert "HOME=/tmp" in result
-    assert "USER=sandbox" in result
+    assert "HOME=" in result
+    assert "USER=" in result
+    # Should not have sensitive variables (credentials, etc.)
+    assert "SSH_AUTH_SOCK" not in result or "SSH_AUTH_SOCK=" not in result
+    assert "GPG_AGENT_INFO" not in result or "GPG_AGENT_INFO=" not in result
 
 
 def test_multiple_commands():
@@ -121,10 +125,10 @@ def test_no_write_to_host_home():
 
 
 @pytest.mark.skipif(
-    True,  # Skip by default as it tests timeout which takes 30+ seconds
+    True,  # Skip by default as it tests timeout which takes 60+ seconds
     reason="Timeout test takes too long for regular test runs"
 )
 def test_timeout_handling():
     """Test that long-running commands are timed out."""
-    result = sandboxed_shell("sleep 60")
+    result = sandboxed_shell("sleep 120")
     assert "timed out" in result.lower()

@@ -46,7 +46,7 @@ The plugin uses the LLM framework's `register_tools` hook (defined via `@llm.hoo
 Located in `llm_tools_sandboxed_shell.py`, this is the main tool function that LLM models can invoke. It:
 
 1. Constructs a secure bubblewrap command that makes the entire filesystem visible (read-only)
-2. Executes the user's shell command inside the sandbox with working directory `/tmp`
+2. Executes the user's shell command inside the sandbox with the user's current working directory
 3. Returns stdout/stderr combined, with exit codes when non-zero
 
 ### Bubblewrap Security Configuration
@@ -57,13 +57,13 @@ The sandbox configuration balances security with filesystem visibility:
 - **Namespace isolation**: Selective namespace isolation with `--unshare-pid`, `--unshare-cgroup`, `--unshare-ipc`, and `--unshare-net`
 - **Network isolation**: `--unshare-net` prevents all network access
 - **Temporary system areas**: `/var` and `/run` are tmpfs that don't persist across invocations
-- **Environment isolation**: `--clearenv` clears all environment variables, only setting minimal safe ones (PATH, HOME=/tmp, USER=sandbox)
+- **Environment isolation**: `--clearenv` clears all environment variables, then passes through safe ones (PATH, HOME, USER, TERM, LANG, LC_*, SHELL, EDITOR, etc.)
 - **Process management**: `--die-with-parent` ensures sandbox processes terminate if parent dies
 
 ### Error Handling Strategy
 
 The `sandboxed_shell` function never raises exceptions to the caller. All errors are returned as formatted strings:
-- Timeout errors (30s limit)
+- Timeout errors (60s limit)
 - Missing bubblewrap installation
 - General execution errors
 - Non-zero exit codes are appended to output
@@ -87,7 +87,7 @@ Tests in `tests/test_tools_sandboxed_shell.py` validate:
 
 1. **Read-only host filesystem**: The entire host filesystem is visible but read-only (via `--ro-bind / /`). This allows commands to examine real system files while preventing modifications.
 
-3. **30-second timeout**: Commands are automatically killed after 30 seconds to prevent resource exhaustion.
+3. **60-second timeout**: Commands are automatically killed after 60 seconds to prevent resource exhaustion.
 
 4. **Combined output**: stdout and stderr are combined in the return value for simplicity, with stderr clearly labeled.
 
