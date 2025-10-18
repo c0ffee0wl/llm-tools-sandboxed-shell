@@ -61,6 +61,9 @@ def sandboxed_shell(command: str) -> str:
         '--unshare-ipc',     # Isolate IPC namespace
         '--unshare-net',     # Block network access
 
+        # Drop all capabilities for maximum security
+        '--cap-drop', 'ALL',
+
         # Clear environment for isolation
         '--clearenv',
 
