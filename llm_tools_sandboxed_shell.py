@@ -24,7 +24,6 @@ def sandboxed_shell(command: str) -> str:
     - Isolated PID, IPC, and cgroup namespaces
     - Temporary /tmp, /var and /run directories that don't persist
     - Real user HOME, USER, and PWD from host environment
-    - Safe environment variables passed through (TERM, LANG, LC_*, EDITOR, etc.)
 
     Args:
         command: The shell command to execute (e.g., "ls -la", "cat /etc/hostname")
