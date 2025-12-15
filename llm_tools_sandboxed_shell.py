@@ -18,18 +18,24 @@ def sandboxed_shell(command: str) -> str:
     """
     Execute a shell command in a secure bubblewrap sandbox.
 
-    The sandbox provides:
+    Runs commands with full filesystem visibility but no write access, useful for
+    safely exploring the system, reading files, or running diagnostic commands.
+    Commands cannot modify files, access the network, or affect host processes.
+
+    Sandbox security features:
     - Read-only access to entire host filesystem (visible but not modifiable)
-    - No network access
+    - No network access (--unshare-net)
     - Isolated PID, IPC, and cgroup namespaces
     - Temporary /tmp, /var and /run directories that don't persist
     - Real user HOME, USER, and PWD from host environment
 
     Args:
-        command: The shell command to execute (e.g., "ls -la", "cat /etc/hostname")
+        command: The shell command to execute (e.g., "ls -la", "cat /etc/hostname",
+                 "grep -r pattern /path"). Multi-command pipes supported.
 
     Returns:
-        The command output (stdout and stderr combined)
+        Command output (stdout + stderr). Exit code shown if non-zero.
+        Timeout after 60 seconds.
     """
 
     # Get current user ID for runtime directory
