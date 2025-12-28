@@ -56,6 +56,8 @@ def sandboxed_shell(command: str) -> str:
         '--proc', '/proc',
 
         # Create temporary filesystems for system directories
+        # Limit /tmp to 1GB to prevent memory exhaustion
+        '--size', str(1024 * 1024 * 1024),
         '--tmpfs', '/tmp',
         '--tmpfs', '/var',
         '--tmpfs', '/run',
@@ -65,7 +67,11 @@ def sandboxed_shell(command: str) -> str:
         '--unshare-pid',     # Isolate process namespace
         '--unshare-cgroup',  # Isolate cgroup namespace
         '--unshare-ipc',     # Isolate IPC namespace
+        '--unshare-uts',     # Isolate hostname
         '--unshare-net',     # Block network access
+
+        # Set neutral hostname
+        '--hostname', 'sandbox',
 
         # Drop all capabilities for maximum security
         '--cap-drop', 'ALL',
