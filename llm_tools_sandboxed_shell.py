@@ -8,10 +8,8 @@ This plugin provides secure command execution by isolating processes in a sandbo
 """
 
 import subprocess
-import shlex
 import os
 import llm
-from typing import Optional
 
 
 def sandboxed_shell(command: str) -> str:
