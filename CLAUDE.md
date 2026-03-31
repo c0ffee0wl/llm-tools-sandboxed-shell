@@ -39,43 +39,27 @@ llm chat -m <model-name>
 
 ## Architecture
 
+This is a single-file plugin. All logic lives in `llm_tools_sandboxed_shell.py`.
+
 ### Plugin Registration
-The plugin uses the LLM framework's `register_tools` hook (defined via `@llm.hookimpl`) to register the `sandboxed_shell` function as a tool. The entry point is configured in `pyproject.toml` under `[project.entry-points.llm]`.
+The plugin uses the LLM framework's `register_tools` hook (via `@llm.hookimpl`) to register the `sandboxed_shell` function as a tool. The entry point is configured in `pyproject.toml` under `[project.entry-points.llm]`.
 
 ### Core Function: `sandboxed_shell(command: str) -> str`
-Located in `llm_tools_sandboxed_shell.py`, this is the main tool function that LLM models can invoke. It:
+Constructs a bubblewrap command, executes the user's shell command inside it, and returns stdout/stderr combined with exit codes when non-zero. Never raises exceptions — all errors are returned as formatted strings.
 
-1. Constructs a secure bubblewrap command that makes the entire filesystem visible (read-only)
-2. Executes the user's shell command inside the sandbox with the user's current working directory
-3. Returns stdout/stderr combined, with exit codes when non-zero
+### Bubblewrap Security Model
 
-### Bubblewrap Security Configuration
+- **Read-only filesystem**: `--ro-bind / /` makes the entire host visible but not modifiable
+- **Namespace isolation**: `--unshare-pid`, `--unshare-cgroup`, `--unshare-ipc`, `--unshare-uts`, `--unshare-net`
+- **Capability drop**: `--cap-drop ALL` for maximum restriction
+- **Environment isolation**: `--clearenv` then selectively passes safe vars (PATH, HOME, USER, locale, etc.)
+- **Temporary areas**: `/tmp` (1GB size limit), `/var`, `/run` are tmpfs, non-persistent
+- **Process management**: `--die-with-parent`, `--new-session`
 
-The sandbox configuration balances security with filesystem visibility:
+### Testing Notes
 
-- **Read-only filesystem**: Entire root filesystem (`/`) is mounted read-only with `--ro-bind / /`, making all host files visible but not modifiable
-- **Namespace isolation**: Selective namespace isolation with `--unshare-pid`, `--unshare-cgroup`, `--unshare-ipc`, and `--unshare-net`
-- **Network isolation**: `--unshare-net` prevents all network access
-- **Temporary system areas**: `/var` and `/run` are tmpfs that don't persist across invocations
-- **Environment isolation**: `--clearenv` clears all environment variables, then passes through safe ones (PATH, HOME, USER, TERM, LANG, LC_*, SHELL, EDITOR, etc.)
-- **Process management**: `--die-with-parent` ensures sandbox processes terminate if parent dies
-
-### Error Handling Strategy
-
-The `sandboxed_shell` function never raises exceptions to the caller. All errors are returned as formatted strings:
-- Timeout errors (60s limit)
-- Missing bubblewrap installation
-- General execution errors
-- Non-zero exit codes are appended to output
-
-### Testing Philosophy
-
-Tests in `tests/test_tools_sandboxed_shell.py` validate:
-- Basic command execution functionality
-- Security isolation (filesystem read-only, network blocked, environment cleared)
-- Writable temporary directories work correctly
-- Error handling and edge cases
-- One long-running timeout test is skipped by default to keep test suite fast
+- Tests call `sandboxed_shell()` directly (no mocking of subprocess/bubblewrap)
+- The timeout test (`test_timeout_handling`) is skipped by default (takes 60+ seconds)
 
 ## System Requirements
 
@@ -85,10 +69,7 @@ Tests in `tests/test_tools_sandboxed_shell.py` validate:
 
 ## Key Design Decisions
 
-1. **Read-only host filesystem**: The entire host filesystem is visible but read-only (via `--ro-bind / /`). This allows commands to examine real system files while preventing modifications.
-
-3. **60-second timeout**: Commands are automatically killed after 60 seconds to prevent resource exhaustion.
-
-4. **Combined output**: stdout and stderr are combined in the return value for simplicity, with stderr clearly labeled.
-
-5. **Defensive security**: The configuration assumes hostile input and provides defense-in-depth through namespace isolation, network blocking, and environment clearing.
+1. **Read-only host filesystem**: The entire host filesystem is visible but read-only. This allows commands to examine real system files while preventing modifications.
+2. **60-second timeout**: Commands are automatically killed after 60 seconds to prevent resource exhaustion.
+3. **Combined output**: stdout and stderr are combined in the return value for simplicity, with stderr clearly labeled.
+4. **No exceptions to caller**: All errors (timeout, missing bwrap, execution failures) are returned as formatted strings, never raised.
